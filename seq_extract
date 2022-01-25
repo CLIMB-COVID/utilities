@@ -1,0 +1,96 @@
+#!/usr/bin/env python3
+
+import argparse
+import pysam
+import sys
+import pathlib
+
+__VERSION__ = "1.0.0"
+
+parser = argparse.ArgumentParser()
+parser.add_argument("mode", choices=["cog-id", "run-name", "pag-name", "cog-and-run"])
+group = parser.add_mutually_exclusive_group(required=True)
+group.add_argument(
+    "--ids",
+    help="Enter the desired IDs as separate arguments. If providing cog-id / run-name pairs provide them separated by a comma (e.g. TEST-12345,TEST_RUN_6789)",
+    nargs="+",
+)
+group.add_argument(
+    "-f",
+    "--file",
+    help="Provide the path to a file containing the query IDs separated by newlines",
+    type=argparse.FileType("r"),
+)
+parser.add_argument(
+    "-o",
+    "--outfile",
+    help="Enter the outfile to write the fetched sequences (Suppresses STDOUT)",
+    type=argparse.FileType("w"),
+)
+parser.add_argument(
+    "--fasta",
+    help="Specify the indexed fasta file to extract sequences from (Default: /cephfs/covid/bham/artifacts/published/latest/elan.consensus.fasta)",
+    type=pathlib.Path,
+    default="/cephfs/covid/bham/artifacts/published/latest/elan.consensus.fasta",
+)
+args = parser.parse_args()
+
+if args.file:
+    ids = set(line.rstrip() for line in args.file)
+else:
+    ids = set(args.ids)
+
+if args.mode == "pag-name":
+    ids = set(x.replace("COG-UK", "COGUK") for x in ids)
+
+
+def load_big_fasta(
+    fasta=args.fasta, index=None,
+):
+    return pysam.FastaFile(filename=fasta, filepath_index=index)
+
+
+def get_fasta_headers(reference_tuple, mode=args.mode, ids=ids):
+    if mode == "cog-id":
+        headers = (
+            reference for reference in reference_tuple if reference.split("/")[1] in ids
+        )
+    elif mode == "run-name":
+        headers = (
+            reference for reference in reference_tuple if reference.split(":")[1] in ids
+        )
+    elif mode == "pag-name":
+        headers = (reference for reference in reference_tuple if reference in ids)
+    elif mode == "cog-and-run":
+        headers = (
+            reference
+            for reference in reference_tuple
+            if f"{reference.split('/')[1]},{reference.split(':')[1]}" in ids
+        )
+    return headers
+
+
+def get_fasta_entry(big_fasta_fh, header):
+    return big_fasta_fh.fetch(reference=header)
+
+
+def seqs_to_stdout(big_fasta_fh, seq_headers):
+    with sys.stdout as pipe:
+        for header in seq_headers:
+            entry = get_fasta_entry(big_fasta_fh, header)
+            pipe.write(f">{header}\n{entry}\n")
+
+
+def seqs_to_file(big_fasta_fh, seq_headers, outfile=args.outfile):
+    for header in seq_headers:
+        entry = get_fasta_entry(big_fasta_fh, header)
+        outfile.write(f">{header}\n{entry}\n")
+    outfile.close()
+
+
+with load_big_fasta() as fh:
+    seq_headers = get_fasta_headers(fh.references, mode=args.mode)
+    if args.outfile:
+        seqs_to_file(fh, seq_headers)
+    else:
+        seqs_to_stdout(fh, seq_headers)
