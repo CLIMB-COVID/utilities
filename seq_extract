@@ -29,9 +29,9 @@ parser.add_argument(
 )
 parser.add_argument(
     "--fasta",
-    help="Specify the indexed fasta file to extract sequences from (Default: /cephfs/covid/bham/artifacts/published/latest/elan.consensus.fasta)",
+    help="Specify the indexed fasta file to extract sequences from (Default: /cephfs/covid/artifacts/elan/latest/elan.consensus.fasta)",
     type=pathlib.Path,
-    default="/cephfs/covid/bham/artifacts/published/latest/elan.consensus.fasta",
+    default="/cephfs/covid/artifacts/elan/latest/elan.consensus.fasta",
 )
 args = parser.parse_args()
 
